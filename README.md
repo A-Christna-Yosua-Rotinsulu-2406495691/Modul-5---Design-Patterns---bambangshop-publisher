@@ -78,6 +78,30 @@ This is the place for you to write reflections:
 
 #### Reflection Publisher-1
 
+<hr>
+
+<h5>1. Kebutuhan Interface (Trait) pada Observer Pattern</h5>
+
+Dalam teori <i>Observer Pattern</i>, Subcriber umumnya direpresentasikan sebagai interface (atau `trait` dalam Rust) untuk mendukung berbagai implementasi yang berbeda. Namun, pada kasus `BambangShop`, penggunaan satu `struct Subscriber` sudah memadai sebab semua subscriber memiliki perilaku yang seragam, yaitu menerima notifikasi melalui `HTTP request`
+
+Sebab tidak terdapat kebutuhan untuk variasi perilaku atau `polymorphism` yang kompleks, penggunaan trait tidak menjadi keharusan dalam konteks ini. Dengan demikian, pendekatan menggunakan satu model struct lebih sederhana dan tetap efektif untuk kebutuhan sistem ini.
+
+<hr>
+
+<h5>2. Pemilihan Struktur Data: Vec vs DashMap</h5>
+
+Penggunaan `Vec` sebenarnya cukup untuk melakukan penyimpanan data, namun kurang optimal dalam menjamin keunikan dan efisiensi akses data. Dalam kasus ini, atribut `url` pada Subscriber harus bersifat unik, sehingga penggunaan struktur data seperti `Dashmap` menjadi lebih tepat.
+
+`Dashmap` memungkinkan akses berbagai key (seperti <i>dictionary</i>) yang lebih cepat dan secara langsung mencegah duplikasi key. Selain itu, operasi seperti pencarian dan penghapusan menjadi lebih efisien dibandingkan menggunakan `Vec` yang membutuhkan iterasi. Oleh sebab itu, penggunaan `Dashmap` lebih sesuai dibandingkan `Vec` pada sistem ini.
+
+<hr>
+
+<h5>3. DashMap vs Singleton dalam Konteks Thread Safety</h5>
+
+Meskipun <i>Singleton pattern</i> dapat digunakan untuk memastikan hanya ada satu instance dari data `SUBSCRIBERS`, pattern tersebut tidak secara otomatis menjamin <i>thread safety</i>. Dalam konteks Rust yang menekankan keamanan concurrency, penggunaan `DashMap` tetap diperlukan karena menyediakan mekanisme <i>thread-safe</i> secara bawaan.
+
+Dengan kata lain, <i>Singleton</i> hanya mengatur jumlah instance, sedangkan `DashMap` mengatur bagaimana data tersebut diakses secara aman oleh banyak thread. Oleh sebab itu, dalam kasus ini, `DashMap` tetap lebih relevan dibandingkan hanya menggunakan <i>Singleton pattern</i>.
+
 #### Reflection Publisher-2
 
 #### Reflection Publisher-3
