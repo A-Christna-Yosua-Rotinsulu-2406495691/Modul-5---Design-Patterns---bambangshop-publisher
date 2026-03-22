@@ -17,10 +17,7 @@ pub fn route_stage() -> AdHoc {
             )
             .mount(
                 "/notification",
-                routes![
-                    notification::subscribe,
-                    notification::unsubscribe
-                ],
+                routes![notification::subscribe],
             )
     })
 }
