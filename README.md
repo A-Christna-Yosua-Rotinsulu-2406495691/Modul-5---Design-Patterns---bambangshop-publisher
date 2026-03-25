@@ -103,5 +103,202 @@ Meskipun <i>Singleton pattern</i> dapat digunakan untuk memastikan hanya ada sat
 Dengan kata lain, <i>Singleton</i> hanya mengatur jumlah instance, sedangkan `DashMap` mengatur bagaimana data tersebut diakses secara aman oleh banyak thread. Oleh sebab itu, dalam kasus ini, `DashMap` tetap lebih relevan dibandingkan hanya menggunakan <i>Singleton pattern</i>.
 
 #### Reflection Publisher-2
+<hr>
+
+<h3>1. 🔎 Breaking the Monolith: Mengapa Service dan Repository Perlu Dipisahkan?</h3>
+
+<hr>
+
+  
+
+Dalam pola <b>Model-View-Controller</b> tradisional, `Model` sering kali memegang dua peran sekaligus, yaitu sebagai <b>penyimpanan data</b> dan <b>pengelola logika bisnis</b>. Namun, pendekatan ini bertentangan dengan prinsip **Single Responsibility Principle (SRP)** dan **Separation of Concerns (SoC)** yang menekankan bahwa setiap komponen sebaiknya mempunyai satu fokus tanggung jawab utama. 
+
+Dengan memisahkan **Service** dan **Repository**, arsitektur sistem akan menjadi lebih modular:
+
+- **Repository** bertugas untuk mengelola akses data `(CRUD)`
+- **Service** menangani logika bisnis seperti proses *subscribe* dan *unsubscribe*
+- **Model** hanya merepresentasikan struktur data saja
+
+Contoh implementasi pada tutorial:
+
+```Rust
+pub struct NotificationService;
+
+impl NotificationService {
+    pub fn subscribe(product_type: &str, subscriber: Subscriber) -> Result<Subscriber> {
+        let product_type_upper: String = product_type.to_uppercase();
+        let product_type_str: &str = product_type_upper.as_str();
+        let subscriber_result: Subscriber =
+            SubscriberRepository::add(product_type_str, subscriber);
+
+        Ok(subscriber_result)
+    }
+}
+```
+
+Dari kode tersebut terlihat bahwa:
+
+- `NotificationService` hanya menangani **logika bisnis** (normalisasi data & proses *subscribe*),
+- Penyimpanan data didelegasikan ke `SubscriberRepository`
+
+Contoh Repository:
+
+``` Rust
+pub struct SubscriberRepository;
+
+impl SubscriberRepository {
+    pub fn add(product_type: &str, subscriber: Subscriber) -> Subscriber {
+        // logic penyimpanan data
+        subscriber
+    }
+}
+```
+
+Keuntungan dari pendekatan ini:
+
+- Mudah untuk diuji (**unit testing** pada `Service`)
+- Mudah di-*maintain*
+- Lebih *scalable* sebab tanggung jawab terpisah
+
+
+<h3>⚠️ When Models Do Too Much: Risiko Jika Semua Ditangani Oleh Model</h3>
+<hr>
+
+Apabila hanya menggunakan `Model` tanpa memisahkan `Service` dan `Repository`, maka setiap model seperti **Program, Subscriber, dan Notification** akan menjadi terlalu kompleks (*God Object*). 
+
+Sebagai ilustrasi singkat yang dapat saya berikan mengenai pendekatan yang kurang baik:
+
+``` Rust
+impl Subscriber {
+    pub fn subscribe(&self, product_type: &str) {
+        let product_type_upper = product_type.to_uppercase();
+
+        // logika bisnis + penyimpanan digabung
+        // (tidak direkomendasikan)
+        println!("Saving subscriber to database...");
+    }
+}
+```
+
+Masalah dari pendekatan ini : 
+
+- **Tight coupling** antar model
+- **Kode sulit dipahami dan dipelihara**
+- **Perubahan kecil berdampak luas**
+- **Sulit untuk reuse dan testing** sebab tidak terisolasi
+- **Model** menangani terlalu banyak hal (violasi **SRP**)
+
+Sebaliknya, dengan arsitektur berlapis seperti yang sudah saya lakukan:
+
+```
+Controller ➡️ Service ➡️ Repository ➡️ Model
+```
+
+Contoh `Controller` yang memanggil `Service` pada tutorial ini:
+
+```Rust
+#[post("/subscribe/<product_type>", data = "<subscriber>")]
+pub fn subscribe(product_type: &str, subscriber: Json<Subscriber>)
+    -> Result<Created<Json<Subscriber>>> {
+
+    match NotificationService::subscribe(product_type, subscriber.into_inner()) {
+        Ok(f) => Ok(Created::new("/").body(Json::from(f))),
+        Err(e) => Err(e),
+    }
+}
+```
+
+Terlihat bahwa dengan pendekatan ini:
+
+- `Controller` hanya menangani request/response
+- `Service` menangani logika bisnis
+- `Repository` menangani data
+- `Model` tetap sederhana
+
+<h3>🚀 Testing Made Easy: Peran Penting Postman dalam Pengembangan API</h3>
+<hr>
+
+Dalam pengembangan API, **Postman** sangat membantu *developer* untuk melakukan pengujian endpoint tanpa perlu membuat *frontend*.
+
+Contoh request yang digunakan dalam tutorial ini:
+
+**Endpoint**:
+``` 
+POST /notification/subscribe/APPLIANCES
+```
+
+**Request Body (JSON)**:
+
+```JSON
+{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "name": "Rick Astley"
+}
+```
+
+Harapan *response* jika *request* berhasil dikirim akan berupa:
+
+```JSON
+{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "name": "Rick Astley"
+}
+```
+Untuk fitur **unsubsribe**:
+
+```Rust
+pub fn unsubscribe(product_type: &str, url: &str) -> Result<Subscriber> {
+    let product_type_upper: String = product_type.to_uppercase();
+    let product_type_str: &str = product_type_upper.as_str();
+
+    let result: Option<Subscriber> =
+        SubscriberRepository::delete(product_type_str, url);
+
+    if result.is_none() {
+        return Err(compose_error_response(
+            Status::NotFound,
+            String::from("Subscriber not found."),
+        ));
+    }
+
+    Ok(result.unwrap())
+}
+```
+
+Dan `Controller`-nya:
+
+```Rust
+#[post("/unsubscribe/<product_type>?<url>")]
+pub fn unsubscribe(product_type: &str, url: &str)
+    -> Result<Json<Subscriber>> {
+
+    match NotificationService::unsubscribe(product_type, url) {
+        Ok(f) => Ok(Json::from(f)),
+        Err(e) => Err(e),
+    }
+}
+```
+
+Manfaat yang saya peroleh dengan menggunakan **Postman**:
+
+- Mudah mengirim **request HTTP**
+- Mendukung berbagai metode (**GET, POST, dll**)
+- Bisa langsung melihat *response*
+- Membantu *debugging* API
+
+Fitur penting pada **Postman**: 
+
+- **Collections ➡️** mengelompokkan endpoint
+- **Environment variables ➡️** fleksibilitas konfigurasi
+- **Test scripts ➡️** validasi otomatis
+- **History ➡️** tracking request
+
+Dengan **Postman**, saya dapat memastikan bahwa:
+
+- Endpoint berjalan dengan benar
+- Data dikirim dan diterima sesuai format
+- Error handling bekerja dengan baik
+
+
 
 #### Reflection Publisher-3
