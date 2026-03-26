@@ -13,6 +13,11 @@ impl ProductService {
         product.product_type = product.product_type.to_uppercase();
         let product_result: Product = ProductRepository::add(product);
 
+        NotificationService.notify(
+            &product_result.product_type,
+            "CREATED",
+            product_result.clone()
+        );
         return Ok(product_result);
     }
 
@@ -28,6 +33,7 @@ impl ProductService {
                 String::from("Product not found.")
             ));
         }
+
         return Ok(product_opt.unwrap());
     }
 
@@ -40,6 +46,12 @@ impl ProductService {
             ));
         }
         let product: Product = product_opt.unwrap();
+
+        NotificationService.notify(
+            &product.product_type,
+            "DELETED",
+            product.clone()
+        );
 
         return Ok(Json::from(product));
     }
