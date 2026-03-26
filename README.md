@@ -80,27 +80,144 @@ This is the place for you to write reflections:
 
 <hr>
 
-<h5>1. Kebutuhan Interface (Trait) pada Observer Pattern</h5>
 
-Dalam teori <i>Observer Pattern</i>, Subcriber umumnya direpresentasikan sebagai interface (atau `trait` dalam Rust) untuk mendukung berbagai implementasi yang berbeda. Namun, pada kasus `BambangShop`, penggunaan satu `struct Subscriber` sudah memadai sebab semua subscriber memiliki perilaku yang seragam, yaitu menerima notifikasi melalui `HTTP request`
-
-Sebab tidak terdapat kebutuhan untuk variasi perilaku atau `polymorphism` yang kompleks, penggunaan trait tidak menjadi keharusan dalam konteks ini. Dengan demikian, pendekatan menggunakan satu model struct lebih sederhana dan tetap efektif untuk kebutuhan sistem ini.
-
+<h3>🔎 1. Simplicity over Abstraction: Apakah Trait Benar-Benar Dibutuhkan?</h3>
 <hr>
 
-<h5>2. Pemilihan Struktur Data: Vec vs DashMap</h5>
+Dalam konsep klasik *Observer Pattern*, `Subscriber` biasanya direpresentasikan sebagai sebuah **interface** (atau `trait` dalam Rust) untuk mendukung berbagai implementasi dengan perilaku berbeda (*polymorphism*). Pendekatan ini sangat berguna ketika terdapat variasi cara subscriber menerima notifikasi, seperti melalui email, SMS, atau push notification. 
 
-Penggunaan `Vec` sebenarnya cukup untuk melakukan penyimpanan data, namun kurang optimal dalam menjamin keunikan dan efisiensi akses data. Dalam kasus ini, atribut `url` pada Subscriber harus bersifat unik, sehingga penggunaan struktur data seperti `Dashmap` menjadi lebih tepat.
+Namun, pada kasus **BambangShop**, seluruh subscriber mempunyai perilaku yang seragam, yaitu menerima notifikasi melalui **HTTP request**. Oleh sebab itu, penggunaan satu `struct Subscriber` sudah cukup mampu untuk merepresentasikan kebutuhan sistem. 
 
-`Dashmap` memungkinkan akses berbagai key (seperti <i>dictionary</i>) yang lebih cepat dan secara langsung mencegah duplikasi key. Selain itu, operasi seperti pencarian dan penghapusan menjadi lebih efisien dibandingkan menggunakan `Vec` yang membutuhkan iterasi. Oleh sebab itu, penggunaan `Dashmap` lebih sesuai dibandingkan `Vec` pada sistem ini.
+Contoh implementasi `Model`:
 
+```Rust
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Subscriber {
+    pub url: String,
+    pub name: String,
+}
+```
+
+Dalam konteks ini:
+
+- Tidak ada **variasi perilaku** - tidak membutuhkan `polymorphism`
+- Tidak ada kebutuhan **extensibility** kompleks
+- `Trait` akan menambah kompleksitas tanpa manfaat nyata (*over-engineering*)
+
+Dengan demikian, keputusan **tidak menggunakan trait** merupakan *trade-off* yang tepat antara **kesederhanaan dan kebutuhan sistem**.
+
+<h3>🗺️ 2. Choosing the Right Tool: Vec vs DashMap dalam Dunia Nyata</h3>
 <hr>
 
-<h5>3. DashMap vs Singleton dalam Konteks Thread Safety</h5>
+Pemilihan struktur data sangat berpengaruh terhadap performa dan efisiensi sistem. Secara sederhana, `Vec` dapat digunakan untuk menyimpan **daftar subscriber**, namun memiliki beberapa keterbatasan:
 
-Meskipun <i>Singleton pattern</i> dapat digunakan untuk memastikan hanya ada satu instance dari data `SUBSCRIBERS`, pattern tersebut tidak secara otomatis menjamin <i>thread safety</i>. Dalam konteks Rust yang menekankan keamanan concurrency, penggunaan `DashMap` tetap diperlukan karena menyediakan mekanisme <i>thread-safe</i> secara bawaan.
+- Pencarian membutuhkan iterasi ➡️ kompleksitas **O(n)**
+- Tidak menjamin keunikan data secara langsung
+- Operasi delete juga membutuhkan pencarian terlebih dahulu
 
-Dengan kata lain, <i>Singleton</i> hanya mengatur jumlah instance, sedangkan `DashMap` mengatur bagaimana data tersebut diakses secara aman oleh banyak thread. Oleh sebab itu, dalam kasus ini, `DashMap` tetap lebih relevan dibandingkan hanya menggunakan <i>Singleton pattern</i>.
+Sebaliknya, pada tutorial ini digunakan `DashMap`, yaitu struktur data berbasis *key-value* (*hash-map*) yang mendukung akses cepat dan *thread-safe*.
+
+Contoh implementasi:
+
+```Rust
+lazy_static! {
+    static ref SUBSCRIBERS: DashMap<String, DashMap<String, Subscriber>> = DashMap::new();
+}
+```
+
+Contoh fungsi `add`:
+
+```Rust
+pub fn add(product_type: &str, subscriber: Subscriber) -> Subscriber {
+    let subscriber_value = subscriber.clone();
+
+    if SUBSCRIBERS.get(product_type).is_none() {
+        SUBSCRIBERS.insert(String::from(product_type), DashMap::new());
+    }
+
+    SUBSCRIBERS.get(product_type)
+        .unwrap()
+        .insert(subscriber_value.url.clone(), subscriber_value);
+
+    subscriber
+}
+```
+
+Keunggulan dari `DashMap`:
+
+- Akses data mendekati **O(1)** atau konstan
+- Key (`url`) menjaga keunikan data
+- Operasi **insert, delete, dan lookup** menjadi lebih efisien.
+- Mendukung *concurrent access*
+
+Dengan demikian, dibandingkan menggunakan `Vec`, `DashMap` memberikan:
+
+- **Performa lebih optimal**
+- **Struktur data yang sesuai dengan kebutuhan**
+- **Skalabilitas yang lebih baik**
+
+### 🔑 3. Beyond Singleton: Mengapa DashMap Tetap Dibutuhkan?
+
+Dalam desain sistem, *Singleton Pattern* digunakan untuk memastikan hanya ada satu **instance** dari suatu data. Namun, penting untuk dipahami bahwa:
+
+> **Singleton tidak secara otomatis menjamin *thread safety***
+
+Pada tutorial yang telah saya lakukan, digunakan pendekatan sebagai berikut:
+
+```Rust
+lazy_static! {
+    static ref SUBSCRIBERS: DashMap<String, DashMap<String, Subscriber>> = DashMap::new();
+}
+```
+
+Di sini:
+
+- `lazy_static` berperan sebagai **Singleton-like initialization**
+- `DashMap` berperan sebagai **thread-safe data structure**
+
+Dalam konteks Rust:
+
+- Thread safety dikontrol melalui `trait` seperti `Send` dan `Sync`
+- `DashMap` sudah mengelola *concurrency* secara internal
+- Tidak perlu menggunakan `Mutex` atau `RwLock` secara manual
+
+Contoh fungsi `delete`:
+
+```Rust
+pub fn delete(product_type: &str, url: &str) -> Option<Subscriber> {
+    if SUBSCRIBERS.get(product_type).is_none() {
+        SUBSCRIBERS.insert(String::from(product_type), DashMap::new());
+    }
+
+    let result = SUBSCRIBERS.get(product_type).unwrap().remove(url);
+
+    if !result.is_none() {
+        return Some(result.unwrap().1);
+    }
+
+    None
+}
+```
+
+Kesimpulan:
+
+- **Singleton menjawab jumlah instance**
+- **DashMap menjawab keamanan akses data**
+
+Oleh sebab itu, dalam kasus ini:
+> Penggunaan **DashMap tetap krusial**, bahkan jika sudah menggunakan pola **Singleton**
+
+### 🔖Final Insight: Belajar Menyeimbangkan Teori dan Praktik
+<hr>
+
+Melalui implementasi dari tutorial ini, saya mendapatkan pemahaman baru bahwa desain sistem tidak hanya bergantung pada teori saja, tetapi juga pada kebutuhan nyata dari aplikasi. Tidak semua pattern atau abstraksi harus diterapkan jika tidak memberikan nilai tambah yang signifikan. Selain itu, saya juga menyadari bahwa:
+
+- Pemilihan struktur data sangat memengaruhi performa
+- **Over-engineering** dapat memperumit sistem tanpa manfaat nyata
+- **Thread safety** merupakan aspek penting dalam pengembangan menggunakan Rust
+
+Dengan demikian, keseimbangan antara **kesederhanaan, efisiensi, dan skalabilitas** menjadi kunci dalam merancang sebuah sistem yang baik.
 
 #### Reflection Publisher-2
 <hr>
